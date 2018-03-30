@@ -16,48 +16,46 @@ const customerIncomplete = require(custIncompletePath);
 const customerAddress = require(custAddressPath);
 
 // Merging the two datasets
-let customer = [];
+let customers = [];
 for (let obj = 0; obj < customerAddress.length; obj++) {
-	customer.push(Object.assign(customerIncomplete[obj], customerAddress[obj]));
+	customers.push(Object.assign(customerIncomplete[obj], customerAddress[obj]));
 }
 
-const insertCustomers = (db, callback, data) => {
+// Getting the argument that defines how many queries will be done
+const input = parseInt(process.argv[2]);
+const queries = Math.floor(customers.length / input);
+
+//Use connect method to connect to the Server
+//Connection URL
+const url = 'mongodb://localhost:27017/edx-course-db';
+mongodb.MongoClient.connect(url, (error, db) => {
+	if (error) return process.exit(1);
+	console.log('Connected to database');
+	// Implementing the array of tasks
+	let tasks = [];
+	for (let query = 0; query < queries; query++) {
+		tasks.push(() => { // Pushes to the array of tasks anonymous functions that will insert the customers data 
+			insertCustomers(db, (query + 1), customers.slice(query * input, (query + 1) * input), () => { db.close(); });
+		});
+	}
+	// Executing the queries at the same time
+	console.log("Saving complete data to the DB.")
+	async.parallel(tasks, (error, result) => {
+  		if (error) console.error(error);
+  		db.close();
+	});
+
+});
+
+// Function to insert the customer on the database
+const insertCustomers = (db, query, data, callback) => {
 	// Get reference to edx-course-docs collection
-	const collection = db.collection('customers');
+	const dbName = 'customers';
+	const collection = db.collection(dbName);
 	// Insert documents
 	collection.insert(data, (error, result) => {
 		if (error) return process.exit(1);
-		console.log(result.result.n); 	
-		console.log(result.ops.length);	
-		console.log(`Inserted ${data.length} documents into the customers collection`);
-		callback(result);
-	});
-};
-
-const findCostumers = (db, callback) => {
-	// Get the documents collection
-	const collection = db.collection('customers');
-	// Find some documents
-	collection.find({}).toArray((error, docs) => {
-		if (error) return process.exit(1);
-		console.log(`Found the following documents:`);
-		console.dir(docs);
-		callback(docs);		
-	});
-};
-
-//Use connect method to connect to the Server
-const connectDB = (mongodb, data) => {	
-	//Connection URL
-	const url = 'mongodb://localhost:27017/edx-course-db'
-	mongodb.MongoClient.connect(url, (error, db) => {
-		if (error) return process.exit(1);
-		console.log('Connection is okay');
-		insertDocuments(db, () => {
-			findDocuments(db, (docs) => {
-				console.log(docs);
-				db.close();
-			});
-		});
+		console.log(`Query ${query}: Inserted ${data.length} documents into the ${dbName} collection`);
+		callback();
 	});
 };
